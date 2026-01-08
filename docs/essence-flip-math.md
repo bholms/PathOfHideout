@@ -1,6 +1,6 @@
 # Essence Flip — Math Derivation
 
-This document explains the math used by the Fossil Flip (essence flip) tool in `index.html`.
+This document explains the math used by the Essence Flip (essence flip) tool in `index.html`.
 
 Problem statement
 - We have $N$ essence types with known prices $p_i$ (chaos per essence at Defeaning tier).
