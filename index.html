@@ -239,7 +239,9 @@
           table.style.width = '100%'; table.style.marginTop = '10px'; table.style.borderCollapse = 'collapse';
           const hdr = document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:right">Price</th><th style="text-align:right">V (optimal)</th><th style="text-align:left">Action</th>';
           table.appendChild(hdr);
-          types.forEach(t=>{
+          // display types sorted by price (high -> low)
+          const sortedTypes = types.slice().sort((a,b) => (pricesObj[b] || 0) - (pricesObj[a] || 0));
+          sortedTypes.forEach(t=>{
             const tr = document.createElement('tr');
             tr.innerHTML = `<td>${t}</td><td style="text-align:right">${pricesObj[t].toFixed(2)}</td><td style="text-align:right">${V[t].toFixed(3)}</td><td>${pricesObj[t] >= C ? 'Keep / Stop' : 'Flip'}</td>`;
             table.appendChild(tr);
