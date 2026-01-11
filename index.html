@@ -18,12 +18,12 @@
       }
       html,body{height:100%;margin:0}
       body{
-        display:flex;align-items:center;justify-content:center;
+        display:flex;align-items:flex-start;justify-content:center;
         background:var(--bg1);background-size:200% 200%;
-        padding:32px;color:#e6eef6;line-height:1.4;
+        padding:48px;color:#e6eef6;line-height:1.4;
       }
       .container{
-        width:100%;max-width:980px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+        width:100%;max-width:1400px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
         border-radius:var(--radius);box-shadow:0 10px 30px rgba(2,6,23,0.6);
         overflow:hidden;border:1px solid rgba(255,255,255,0.03);
       }
@@ -43,6 +43,7 @@
       .panel{flex:1 1 320px;min-width:260px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));padding:18px;border-radius:12px;border:1px solid rgba(255,255,255,0.02)}
       .panel h2{margin:0 0 8px 0;font-size:16px}
       .muted{color:var(--muted);font-size:13px}
+      .hint{margin-left:8px;color:var(--muted);cursor:help;font-size:12px;vertical-align:middle}
       .cta{margin-top:12px;display:inline-flex;gap:8px}
       .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 12px;border-radius:10px;color:var(--accent);cursor:pointer}
 
@@ -65,19 +66,19 @@
 
       <nav class="tabs" role="tablist" aria-label="Flip tools">
         <button class="tab" role="tab" id="tab-essence" aria-controls="panel-essence" aria-selected="true">Essence Flip</button>
-        <button class="tab" role="tab" id="tab-fossil" aria-controls="panel-fossil" aria-selected="false">Fossil Flip</button>
       </nav>
 
       <main>
         <div class="panel-wrap">
           <section class="panel" id="panel-essence" role="tabpanel" aria-labelledby="tab-essence">
             <h2>Essence Flip</h2>
-            <p class="muted">Tool to compute an optimal stop-threshold for flipping essence tiers using Harvest (uniform swap) with a swap cost.</p>
+            <p class="muted">Tool to compute an optimal stop-threshold for flipping essence tiers using Harvest (uniform swap) with a swap cost. If you are interested, this is the <a href="https://github.com/bholms/PathOfHideout/blob/main/docs/essence-flip-math.md" target="_blank" style="color:var(--accent);text-decoration:underline">proof</a>.</p>
 
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
               <label style="flex:1 1 160px">Start count<br><input id="startCount" type="number" min="1" value="10" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
               <label style="flex:1 1 220px">Start type<br><select id="startType" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);color:inherit"></select></label>
-              <label style="flex:1 1 160px">Craft cost (chaos)<br><input id="swapCost" type="number" min="0" step="0.1" value="3" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
+              <label style="flex:1 1 160px">Blue lifeforce per div <span class="hint" title="Number of blue lifeforce provided by one div">ⓘ</span><br><input id="bluePerDiv" type="number" min="0.0001" step="1" value="6000" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
+              <label style="flex:1 1 160px">Chaos per div <span class="hint" title="Chaos value gained by selling one div"><span class="hint">ⓘ</span></span><br><input id="chaosPerDiv" type="number" min="0" step="0.1" value="400" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
             </div>
 
             <details style="margin-top:12px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.02)">
@@ -92,13 +93,6 @@
             <div id="results" style="margin-top:14px"></div>
           </section>
 
-          <section class="panel" id="panel-fossil" role="tabpanel" aria-labelledby="tab-fossil" hidden>
-            <h2>Fossil Flip</h2>
-            <p class="muted">Placeholder for Fossil Flip tools. Essence flipping logic has been moved to the Essence Flip tab.</p>
-            <div class="cta">
-              <button class="btn" onclick="alert('Fossil Flip placeholder')">Run Demo</button>
-            </div>
-          </section>
         </div>
       </main>
     </div>
@@ -202,7 +196,10 @@
           const pricesObj = readPrices();
           const types = Object.keys(pricesObj);
           const pricesArr = types.map(t=> pricesObj[t]);
-          const cost = Number(document.getElementById('swapCost').value) || 0;
+          // compute craft cost per flip from user inputs: (chaos per div) / (blue lifeforce per div) * 30
+          const bluePerDiv = Number(document.getElementById('bluePerDiv').value) || 0;
+          const chaosPerDiv = Number(document.getElementById('chaosPerDiv').value) || 0;
+          const cost = (bluePerDiv > 0) ? (chaosPerDiv / bluePerDiv) * 30 : 0;
           const C = computeThreshold(pricesArr, cost);
           const V = {};
           types.forEach((t,i)=> V[t] = Math.max(pricesArr[i], C));
@@ -216,10 +213,20 @@
           // Which types to stop at
           const stopTypes = types.filter(t=> pricesObj[t] >= C);
 
+          // Expected flips / craft cost (cost is per-flip per-essence)
+          const q = stopTypes.length / types.length; // probability a random swap yields a stop-type
+          let expectedFlipsPerEssence = 0;
+          if(pricesObj[start] >= C) expectedFlipsPerEssence = 0; else expectedFlipsPerEssence = q > 0 ? (1 / q) : 0;
+          const totalExpectedCraftCost = count * expectedFlipsPerEssence * cost;
+
           const res = document.getElementById('results');
           res.innerHTML = '';
           const summary = document.createElement('div');
-          summary.innerHTML = `<strong>Threshold (C):</strong> ${C.toFixed(3)} chaos — <strong>Stop types:</strong> ${stopTypes.join(', ')}`;
+          function fmtChaosDiv(v){
+            if(chaosPerDiv > 0) return `${v.toFixed(3)} chaos / ${(v/chaosPerDiv).toFixed(3)} div`;
+            return `${v.toFixed(3)} chaos / — div`;
+          }
+          summary.innerHTML = `<strong>Threshold (C):</strong> ${fmtChaosDiv(C)} — <strong>Stop types:</strong> ${stopTypes.join(', ')}`;
           res.appendChild(summary);
 
           const table = document.createElement('table');
@@ -234,10 +241,13 @@
           res.appendChild(table);
 
           const footer = document.createElement('div'); footer.style.marginTop='10px';
-          footer.innerHTML = `<div><strong>Start:</strong> ${count} × ${start} (price ${pricesObj[start].toFixed(2)})</div>
-                              <div><strong>Expected final per essence:</strong> ${expectedPer.toFixed(3)} chaos</div>
-                              <div><strong>Expected total value:</strong> ${totalExpected.toFixed(3)} chaos</div>
-                              <div style="color:${profit>=0? 'var(--accent)': '#f87171'}"><strong>Expected profit vs immediate sell:</strong> ${profit.toFixed(3)} chaos</div>`;
+          footer.innerHTML = `<div><strong>Start:</strong> ${count} × ${start} (price ${fmtChaosDiv(pricesObj[start])})</div>
+                              <div><strong>Craft per flip (computed):</strong> ${fmtChaosDiv(cost)}</div>
+                              <div><strong>Expected final per essence:</strong> ${fmtChaosDiv(expectedPer)}</div>
+                              <div><strong>Expected flips per essence:</strong> ${expectedFlipsPerEssence.toFixed(3)}</div>
+                              <div><strong>Expected craft cost:</strong> ${fmtChaosDiv(totalExpectedCraftCost)}</div>
+                              <div><strong>Expected total value:</strong> ${fmtChaosDiv(totalExpected)}</div>
+                              <div style="color:${profit>=0? 'var(--accent)': '#f87171'}"><strong>Expected profit vs immediate sell:</strong> ${fmtChaosDiv(profit)}</div>`;
           res.appendChild(footer);
         }
 
