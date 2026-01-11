@@ -88,10 +88,12 @@
 
             <div class="cta" style="margin-top:12px">
               <button class="btn" id="computeBtn">Compute Strategy</button>
+              <button class="btn" id="refreshPricesBtn" style="border-color: rgba(255,255,255,0.06);">Refresh prices</button>
             </div>
 
             <div id="results" style="margin-top:14px"></div>
             <pre id="fetchDebug" style="margin-top:10px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);max-height:260px;overflow:auto;font-size:13px"></pre>
+            <div id="fetchLog" style="margin-top:8px;color:var(--muted);font-size:13px;max-height:120px;overflow:auto;white-space:pre-wrap"></div>
           </section>
 
         </div>
@@ -152,7 +154,8 @@
           const startType = document.getElementById('startType');
           pricesTable.innerHTML = '';
           startType.innerHTML = '';
-          for(const k of Object.keys(defaultPrices)){
+          const keys = Object.keys(defaultPrices);
+          for(const k of keys){
             const wrapper = document.createElement('div');
             wrapper.style.display = 'contents';
             const label = document.createElement('label');
@@ -167,6 +170,8 @@
 
             const opt = document.createElement('option'); opt.value = k; opt.textContent = k; startType.appendChild(opt);
           }
+          // default to the last option in the list
+          if(keys.length > 0) startType.value = keys[keys.length - 1];
         }
 
         function readPrices(){
@@ -268,8 +273,8 @@
         }
 
         async function fetchEssencePrices(){
-          // use the API endpoint provided
-          const url = 'https://poe.ninja/poe1/api/economy/stash/current/item/overview?league=Standard&type=Essence';
+          // use the Cloudflare Worker proxy to avoid CORS issues
+          const url = 'https://jolly-dew-18cc.jw11011.workers.dev/';
           // clone defaults as fallback
           const prices = Object.assign({}, defaultPrices);
 
@@ -281,10 +286,12 @@
               if(k && pr[k] != null) i.value = pr[k];
             });
             // also update debug output
-            try{ updateDebug(pr, 'poeninja-api'); }catch(e){}
+            try{ updateDebug(pr, 'proxy'); }catch(e){}
+            try{ log('Prices updated in UI'); }catch(e){}
           }
 
           try{
+            try{ log('Requesting prices from proxy...'); }catch(e){}
             const res = await fetch(url, {mode: 'cors'});
             if(!res.ok) throw new Error('Fetch failed');
             const data = await res.json();
@@ -303,11 +310,13 @@
 
             // update UI with found prices
             updateUI(prices);
+            try{ log('Prices fetched successfully from proxy'); }catch(e){}
             return prices;
           }catch(err){
             // on any error, leave defaults in place and update UI
             updateUI(prices);
             try{ updateDebug(prices, 'fallback'); }catch(e){}
+            try{ log('Fetch failed, using fallback defaults: ' + (err && err.message ? err.message : err)); }catch(e){}
             return prices;
           }
         }
@@ -315,6 +324,21 @@
         // initial fetch and periodic refresh every 10 minutes
         try{ fetchEssencePrices(); }catch(e){}
         setInterval(()=>{ try{ fetchEssencePrices(); }catch(e){} }, 10 * 60 * 1000);
+        // logging helper and manual refresh handler
+        function log(msg){
+          try{
+            const el = document.getElementById('fetchLog');
+            if(!el) return;
+            const time = new Date().toLocaleTimeString();
+            el.textContent = `${time} — ${msg}\n` + el.textContent;
+          }catch(e){}
+        }
+
+        // wire manual refresh button
+        try{
+          const rb = document.getElementById('refreshPricesBtn');
+          if(rb) rb.addEventListener('click', ()=>{ log('Manual refresh triggered'); fetchEssencePrices(); });
+        }catch(e){}
       })();
     </script>
   </body>
