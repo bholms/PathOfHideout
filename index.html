@@ -50,6 +50,13 @@
       footer{padding:14px 20px;color:var(--muted);font-size:13px;border-top:1px solid rgba(255,255,255,0.02);}
 
       @media (max-width:640px){body{padding:16px}.panel-wrap{padding:18px;gap:12px}}
+      /* Results table styling */
+      #results{overflow-x:auto}
+      .results-table{width:100%;border-collapse:collapse;table-layout:fixed}
+      .results-table col{width:25%}
+      .results-table th, .results-table td{padding:6px 10px;vertical-align:middle}
+      .results-table th{font-weight:600}
+      .results-table td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     </style>
   </head>
   <body>
@@ -236,14 +243,19 @@
           res.appendChild(summary);
 
           const table = document.createElement('table');
-          table.style.width = '100%'; table.style.marginTop = '10px'; table.style.borderCollapse = 'collapse';
-          const hdr = document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:right">Price</th><th style="text-align:right">V (optimal)</th><th style="text-align:left">Action</th>';
+          table.className = 'results-table';
+          table.style.marginTop = '10px';
+          // ensure columns are evenly spaced via CSS colgroup
+          const cg = document.createElement('colgroup');
+          for(let i=0;i<4;i++){ const c = document.createElement('col'); cg.appendChild(c); }
+          table.appendChild(cg);
+          const hdr = document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:left">Price</th><th style="text-align:left">Optimal Value</th><th style="text-align:left">Optimal Action</th>';
           table.appendChild(hdr);
           // display types sorted by price (high -> low)
           const sortedTypes = types.slice().sort((a,b) => (pricesObj[b] || 0) - (pricesObj[a] || 0));
           sortedTypes.forEach(t=>{
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${t}</td><td style="text-align:right">${pricesObj[t].toFixed(2)}</td><td style="text-align:right">${V[t].toFixed(3)}</td><td>${pricesObj[t] >= C ? 'Keep / Stop' : 'Flip'}</td>`;
+            tr.innerHTML = `<td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</td><td style="text-align:left;overflow:hidden">${pricesObj[t].toFixed(2)}</td><td style="text-align:left;overflow:hidden">${V[t].toFixed(3)}</td><td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pricesObj[t] >= C ? 'Keep / Stop' : 'Flip'}</td>`;
             table.appendChild(tr);
           });
           res.appendChild(table);
