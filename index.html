@@ -91,6 +91,7 @@
             </div>
 
             <div id="results" style="margin-top:14px"></div>
+            <pre id="fetchDebug" style="margin-top:10px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);max-height:260px;overflow:auto;font-size:13px"></pre>
           </section>
 
         </div>
@@ -252,7 +253,68 @@
         }
 
         document.getElementById('computeBtn').addEventListener('click', computeStrategy);
+        // initialize UI from embedded defaults
         initPrices();
+
+        // Try to fetch live essence prices from poe.ninja on first load
+        // and then periodically every 10 minutes while page is open.
+
+        function updateDebug(pricesObj, source='fallback'){
+          try{
+            const out = { timestamp: new Date().toISOString(), source, prices: pricesObj };
+            const el = document.getElementById('fetchDebug');
+            if(el) el.textContent = JSON.stringify(out, null, 2);
+          }catch(e){/* ignore */}
+        }
+
+        async function fetchEssencePrices(){
+          // use the API endpoint provided
+          const url = 'https://poe.ninja/poe1/api/economy/stash/current/item/overview?league=Standard&type=Essence';
+          // clone defaults as fallback
+          const prices = Object.assign({}, defaultPrices);
+
+          function updateUI(pr){
+            // update inputs in the prices table if present
+            const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
+            inputs.forEach(i=>{
+              const k = i.dataset.key;
+              if(k && pr[k] != null) i.value = pr[k];
+            });
+            // also update debug output
+            try{ updateDebug(pr, 'poeninja-api'); }catch(e){}
+          }
+
+          try{
+            const res = await fetch(url, {mode: 'cors'});
+            if(!res.ok) throw new Error('Fetch failed');
+            const data = await res.json();
+
+            if(data && Array.isArray(data.lines)){
+              const prefix = 'Deafening Essence of ';
+              data.lines.forEach(item => {
+                const name = item.name || item.baseType || '';
+                if(typeof name === 'string' && name.startsWith(prefix)){
+                  const key = name.substring(prefix.length).trim();
+                  const chaos = item.chaosValue;
+                  if(key && prices[key] != null && typeof chaos === 'number') prices[key] = chaos;
+                }
+              });
+            }
+
+            // update UI with found prices
+            updateUI(prices);
+            return prices;
+          }catch(err){
+            // on any error, leave defaults in place and update UI
+            updateUI(prices);
+            try{ updateDebug(prices, 'fallback'); }catch(e){}
+            return prices;
+          }
+        }
+
+        // initial fetch and periodic refresh every 10 minutes
+        try{ fetchEssencePrices(); }catch(e){}
+        setInterval(()=>{ try{ fetchEssencePrices(); }catch(e){} }, 10 * 60 * 1000);
       })();
     </script>
   </body>
