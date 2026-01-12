@@ -69,6 +69,13 @@
             <p class="lead">Quick helpers for Essence and Fossil flipping</p>
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="leagueSelect" style="color:var(--muted);font-size:13px;margin:0">League</label>
+          <select id="leagueSelect" style="padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);color:inherit">
+            <option value="Keepers">Temporary League</option>
+            <option value="Standard" selected>Standard League</option>
+          </select>
+        </div>
       </header>
 
       <nav class="tabs" role="tablist" aria-label="Flip tools">
@@ -84,7 +91,7 @@
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
               <label style="flex:1 1 160px">Start count<br><input id="startCount" type="number" min="1" value="10" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
               <label style="flex:1 1 220px">Start type<br><select id="startType" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);color:inherit"></select></label>
-              <label style="flex:1 1 160px">Blue lifeforce per div <span class="hint" title="Number of blue lifeforce provided by one div">ⓘ</span><br><input id="bluePerDiv" type="number" min="0.0001" step="1" value="6000" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
+              <label style="flex:1 1 160px">Blue lifeforce per div <span class="hint" title="Number of blue lifeforce per 1 Divine Orb">ⓘ</span><br><input id="bluePerDiv" type="number" min="0.0001" step="0.001" value="6000" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
               <label style="flex:1 1 160px">Chaos per div <span class="hint" title="Chaos value gained by selling one div"><span class="hint">ⓘ</span></span><br><input id="chaosPerDiv" type="number" min="0" step="0.1" value="400" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
             </div>
 
@@ -99,8 +106,6 @@
             </div>
 
             <div id="results" style="margin-top:14px"></div>
-            <pre id="fetchDebug" style="margin-top:10px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);max-height:260px;overflow:auto;font-size:13px"></pre>
-            <div id="fetchLog" style="margin-top:8px;color:var(--muted);font-size:13px;max-height:120px;overflow:auto;white-space:pre-wrap"></div>
           </section>
 
         </div>
@@ -209,10 +214,21 @@
           const pricesObj = readPrices();
           const types = Object.keys(pricesObj);
           const pricesArr = types.map(t=> pricesObj[t]);
-          // compute craft cost per flip from user inputs: (chaos per div) / (blue lifeforce per div) * 30
-          const bluePerDiv = Number(document.getElementById('bluePerDiv').value) || 0;
-          const chaosPerDiv = Number(document.getElementById('chaosPerDiv').value) || 0;
-          const cost = (bluePerDiv > 0) ? (chaosPerDiv / bluePerDiv) * 30 : 0;
+          // compute craft cost per flip
+          // prefer using fetched chaos per lifeforce (if available): cost = 30 * chaosPerLifeforce
+          const bluePerDiv = Number(document.getElementById('bluePerDiv').value) || 0; // blue lifeforce per 1 divine
+          const chaosPerDiv = Number(document.getElementById('chaosPerDiv').value) || 0; // chaos per divine
+          let cost = 0;
+          // Prefer user-entered textbox values when available
+          if(chaosPerDiv > 0 && bluePerDiv > 0){
+            const chaosPerBlueDerived = chaosPerDiv / bluePerDiv;
+            cost = 30 * chaosPerBlueDerived;
+          } else if(fetchedChaosPerLifeforce != null && typeof fetchedChaosPerLifeforce === 'number'){
+            // fall back to fetched chaos per blue lifeforce
+            cost = 30 * fetchedChaosPerLifeforce;
+          } else {
+            cost = 0;
+          }
           const C = computeThreshold(pricesArr, cost);
           const V = {};
           types.forEach((t,i)=> V[t] = Math.max(pricesArr[i], C));
@@ -249,7 +265,7 @@
           const cg = document.createElement('colgroup');
           for(let i=0;i<4;i++){ const c = document.createElement('col'); cg.appendChild(c); }
           table.appendChild(cg);
-          const hdr = document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:left">Price</th><th style="text-align:left">Optimal Value</th><th style="text-align:left">Optimal Action</th>';
+          const hdr = document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:left">Price (c)</th><th style="text-align:left">Optimal Value (c)</th><th style="text-align:left">Optimal Action</th>';
           table.appendChild(hdr);
           // display types sorted by price (high -> low)
           const sortedTypes = types.slice().sort((a,b) => (pricesObj[b] || 0) - (pricesObj[a] || 0));
@@ -278,15 +294,20 @@
         // Try to fetch live essence prices from poe.ninja on first load
         // and then periodically every 10 minutes while page is open.
 
-        function updateDebug(pricesObj, source='fallback'){
+        // debug helper: prints arbitrary payload (prices, currencyRates, etc.)
+        function updateDebug(payload, source='fallback'){
           try{
-            const out = { timestamp: new Date().toISOString(), source, prices: pricesObj };
+            const out = { timestamp: new Date().toISOString(), source, data: payload };
             const el = document.getElementById('fetchDebug');
             if(el) el.textContent = JSON.stringify(out, null, 2);
           }catch(e){/* ignore */}
         }
 
-        async function fetchEssencePrices(){
+        // fetched currency rates (chaos per lifeforce, chaos per div)
+        let fetchedChaosPerLifeforce = null;
+        let fetchedChaosPerDiv = null;
+
+        async function fetchPoeNinjaPrices(){
           // use the Cloudflare Worker proxy to avoid CORS issues
           const url = 'https://jolly-dew-18cc.jw11011.workers.dev/';
           // clone defaults as fallback
@@ -306,7 +327,10 @@
 
           try{
             try{ log('Requesting prices from proxy...'); }catch(e){}
-            const res = await fetch(url, {mode: 'cors'});
+            // include selected league as query parameter so the proxy/worker can forward appropriately
+            const leagueSel = (document.getElementById('leagueSelect') && document.getElementById('leagueSelect').value) ? document.getElementById('leagueSelect').value : 'Standard';
+            const fetchUrl = url + '?league=' + encodeURIComponent(leagueSel);
+            const res = await fetch(fetchUrl, {mode: 'cors'});
             if(!res.ok) throw new Error('Fetch failed');
             const data = await res.json();
 
@@ -320,6 +344,53 @@
                   if(key && prices[key] != null && typeof chaos === 'number') prices[key] = chaos;
                 }
               });
+            }
+
+            // also fetch currency rates (lifeforce/div) from wandering-lake proxy
+            try{
+              const leagueSel = (document.getElementById('leagueSelect') && document.getElementById('leagueSelect').value) ? document.getElementById('leagueSelect').value : 'Standard';
+              const curUrl = 'https://wandering-lake-d156.jw11011.workers.dev/?league=' + encodeURIComponent(leagueSel);
+              try{ log('Requesting currency rates from proxy...'); }catch(e){}
+              const cres = await fetch(curUrl, {mode: 'cors'});
+              if(cres && cres.ok){
+                const cdata = await cres.json();
+                const arr = Array.isArray(cdata) ? cdata : (Array.isArray(cdata.lines) ? cdata.lines : null);
+                if(arr){
+                  // find lifeforce and divine entries
+                  for(const it of arr){
+                    const id = (it.detailsId || '').toLowerCase();
+                    const name = (it.currencyTypeName || '').toLowerCase();
+                    if(id.includes('primal-crystallised-lifeforce') || name.includes('Primal Crystallised Lifeforce')){
+                      // chaosEquivalent holds chaos per lifeforce
+                      if(typeof it.chaosEquivalent === 'number'){
+                        fetchedChaosPerLifeforce = it.chaosEquivalent;
+                        // if we already have chaos per div, populate blue lifeforce per div = chaosPerDiv / chaosPerLifeforce
+                        try{
+                          if(fetchedChaosPerDiv != null && fetchedChaosPerLifeforce > 0){
+                            const bluePerDivVal = fetchedChaosPerDiv / fetchedChaosPerLifeforce;
+                            document.getElementById('bluePerDiv').value = bluePerDivVal.toFixed(3);
+                          }
+                        }catch(e){}
+                      }
+                    }
+                    if(id.includes('divine-orb') || name.includes('divine orb')){
+                      if(typeof it.chaosEquivalent === 'number'){
+                        fetchedChaosPerDiv = it.chaosEquivalent;
+                        document.getElementById('chaosPerDiv').value = fetchedChaosPerDiv.toFixed(2);
+                        // if we already have chaos per lifeforce, populate bluePerDiv
+                        try{
+                          if(fetchedChaosPerDiv != null && fetchedChaosPerLifeforce > 0){
+                            const bluePerDivVal = fetchedChaosPerDiv / fetchedChaosPerLifeforce;
+                            document.getElementById('bluePerDiv').value = bluePerDivVal.toFixed(3);
+                          }
+                        }catch(e){}
+                      }
+                    }
+                  }
+                }
+              }
+            }catch(e){
+              try{ log('Currency rates fetch failed: ' + (e && e.message? e.message : e)); }catch(e){}
             }
 
             // update UI with found prices
@@ -336,22 +407,22 @@
         }
 
         // initial fetch and periodic refresh every 10 minutes
-        try{ fetchEssencePrices(); }catch(e){}
-        setInterval(()=>{ try{ fetchEssencePrices(); }catch(e){} }, 10 * 60 * 1000);
+        try{ fetchPoeNinjaPrices(); }catch(e){}
+        setInterval(()=>{ try{ fetchPoeNinjaPrices(); }catch(e){} }, 10 * 60 * 1000);
         // logging helper and manual refresh handler
         function log(msg){
-          try{
-            const el = document.getElementById('fetchLog');
-            if(!el) return;
-            const time = new Date().toLocaleTimeString();
-            el.textContent = `${time} — ${msg}\n` + el.textContent;
-          }catch(e){}
+          try{ console.log('fetch:', msg); }catch(e){}
         }
 
         // wire manual refresh button
         try{
           const rb = document.getElementById('refreshPricesBtn');
-          if(rb) rb.addEventListener('click', ()=>{ log('Manual refresh triggered'); fetchEssencePrices(); });
+          if(rb) rb.addEventListener('click', ()=>{ log('Manual refresh triggered'); fetchPoeNinjaPrices(); });
+        }catch(e){}
+        // wire league selector to refresh prices when changed
+        try{
+          const ls = document.getElementById('leagueSelect');
+          if(ls) ls.addEventListener('change', (ev)=>{ log('League changed to ' + ls.value); fetchPoeNinjaPrices(); });
         }catch(e){}
       })();
     </script>
