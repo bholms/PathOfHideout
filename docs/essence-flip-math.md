@@ -1,21 +1,21 @@
-# Essence Flip — Math Derivation
+# Essence Flip
 
-This document explains the math used by the Essence Flip (essence flip) tool in `index.html`.
+This document explains the math used by the Essence Flip in this Path of Hideout.
 
-Problem statement
+## Problem statement
 - We have $N$ essence types with known prices $p_i$ (chaos per essence at Defeaning tier).
 - You can perform a Harvest swap on one essence, which converts it to a (uniform) random essence type among the $N$ types.
-- Each swap costs $c$ chaos (the fee to craft/swap).
+- Each Harvest swap costs $c$ chaos.
 - After each swap you can decide to stop (sell the current essence) or continue swapping.
-- Goal: for each starting type, compute the optimal policy (stop/continue) that maximizes expected final chaos value.
+- Goal: for each starting type, compute the optimal policy (stop/continue) that maximizes expected total value.
 
-Model and optimal policy
+## Model and optimal policy
 
-Let $V(i)$ be the maximal expected chaos value you can achieve when holding an essence of type $i$.
+Let $V(i)$ be the maximal expected value you can achieve when holding an essence of type $i$.
 You have two choices:
 
-- Stop now and receive $p_i$.
-- Swap once (pay cost $c$) and then follow the optimal policy; the expected value after the swap is the average of $V(j)$ across $j$ (because swaps are uniform), call it $\mathrm{AvgV}$.
+1. Stop now and receive $p_i$.
+2. Swap once (pay cost $c$) and then follow the optimal policy; the expected value after the swap is the average of $V(j)$ across $j$ (because swaps are uniform), call it $\mathrm{AvgV}$.
 
 Therefore:
 
@@ -24,7 +24,9 @@ V(i)
 =\max\bigl(p_i,\;\mathrm{AvgV} - c\bigr)
 $$
 
-Note: $\mathrm{AvgV} = \dfrac{1}{N}\sum_{j=1}^N V(j)$.
+Note that 
+$\mathrm{AvgV} = \dfrac{1}{N}\sum_{j=1}^N V(j)$.
+
 Because $\mathrm{AvgV}$ is the same for all $i$ (swap distribution doesn't depend on source), define the constant
 
 $$
@@ -57,9 +59,9 @@ $$
 
 Solving for $C$
 
-We can solve for $C$ numerically (binary search is effective because $f(C)$ is non-decreasing in $C$):
+We can solve for $C$ numerically with binary search because $f(C)$ is non-decreasing in $C$, and algorithm is follow:
 
-1. Choose low and high bounds that bracket the solution (for example, below the smallest price minus cost and above the largest price).
+1. Choose low and high bounds that bracket the solution
 2. Compute $\mathrm{mid} = (\mathrm{low}+\mathrm{high})/2$.
 3. Evaluate $f(\mathrm{mid}) - c$ and compare to $\mathrm{mid}$. If $f(\mathrm{mid}) - c > \mathrm{mid}$, increase $\mathrm{low} = \mathrm{mid}$, otherwise decrease $\mathrm{high} = \mathrm{mid}$.
 4. Repeat until convergence.
@@ -67,13 +69,13 @@ We can solve for $C$ numerically (binary search is effective because $f(C)$ is n
 Once $C$ is found:
 
 - $V(i) = \max(p_i, C)$
-- Optimal policy: stop when $p_i \ge C$, otherwise swap.
+- Optimal policy is determined: stop when $p_i \ge C$, otherwise swap.
 
-Interpretation
+## Intuition
 
 - The scalar threshold $C$ has a direct meaning: continue swapping until you have an essence whose price is at least $C$. Because swaps are random and symmetric, this stationary threshold solves the global optimal stopping problem.
 
-Expected value for a starting type
+## Expected value for a starting type
 
 If you start with type $s$ and $k$ independent essences, the expected final chaos after following the optimal policy is
 
@@ -87,12 +89,11 @@ $$
     \text{Profit} = k \cdot \bigl(V(s) - p_s\bigr).
 $$
 
-Notes and extensions
+## Notes and extensions
 
-- The derivation assumes swaps are uniformly random across all $N$ types and independent of source.
+- The derivation assumes swaps are uniformly random across all $N$ types and independent of source. Therefore, similar reasoning does not apply to Fossil swapping, for example.
 - If swap probabilities depend on source type, the expectation term $\mathrm{AvgV}$ would need to be replaced by the conditional expectation for each source type $i$, i.e. $E[V\mid \text{swap from }i]$. Then one must solve a linear system or perform value iteration.
-- We ignore inventory effects and assume each essence is handled independently.
 
-References
+## References
 
-- This is a standard optimal stopping / Markov decision process with two actions (stop or continue). The uniform swap distribution simplifies the Bellman equation to a low-dimensional fixed-point problem.
+- Standard optimal stopping / Markov decision process with two actions (stop or continue). The uniform swap distribution simplifies the Bellman equation to a low-dimensional fixed-point problem.
