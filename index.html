@@ -97,7 +97,13 @@
 
             <details style="margin-top:12px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.02)">
               <summary style="cursor:pointer">Essence prices (Defeaning tier) — edit values</summary>
-              <div id="pricesTable" style="margin-top:10px;display:grid;grid-template-columns:1fr 120px;gap:8px"></div>
+              <div id="priceUnitWrap" style="margin-top:8px;display:flex;gap:10px;align-items:center;color:var(--muted);font-size:13px">
+                <div style="font-weight:600">Unit:</div>
+                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="priceUnit" value="chaos" checked> chaos / essence</label>
+                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="priceUnit" value="essPerDiv"> essence / div</label>
+                <div style="margin-left:8px;color:var(--muted);font-size:12px">(choose how you want to enter prices)</div>
+              </div>
+              <div id="pricesTable" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
             </details>
 
             <div class="cta" style="margin-top:12px">
@@ -166,19 +172,39 @@
           const startType = document.getElementById('startType');
           pricesTable.innerHTML = '';
           startType.innerHTML = '';
+          // ensure unit radio exists and set default if not saved
+          try{
+            const wrap = document.getElementById('priceUnitWrap');
+            if(wrap){
+              const radios = Array.from(wrap.querySelectorAll('input[name="priceUnit"]'));
+              // restore saved unit if present
+              const saved = loadUserValues();
+              if(saved && saved.priceUnit){
+                radios.forEach(r => r.checked = (r.value === saved.priceUnit));
+              }
+            }
+          }catch(e){}
           const keys = Object.keys(defaultPrices);
           for(const k of keys){
-            const wrapper = document.createElement('div');
-            wrapper.style.display = 'contents';
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.justifyContent = 'flex-start';
+            row.style.alignItems = 'center';
+            row.style.gap = '8px';
             const label = document.createElement('label');
             label.textContent = k;
-            label.style.alignSelf = 'center';
+            label.style.flex = '0 0 220px';
+            label.style.margin = '0';
+            label.style.overflow = 'hidden';
+            label.style.textOverflow = 'ellipsis';
+            label.style.whiteSpace = 'nowrap';
             const input = document.createElement('input');
             input.type = 'number'; input.step = '0.1'; input.value = defaultPrices[k];
-            input.style.padding = '8px'; input.style.borderRadius = '8px'; input.style.border = '1px solid rgba(255,255,255,0.04)'; input.style.background = 'transparent'; input.style.color = 'inherit';
+            input.style.padding = '8px'; input.style.borderRadius = '8px'; input.style.border = '1px solid rgba(255,255,255,0.04)'; input.style.background = 'transparent'; input.style.color = 'inherit'; input.style.width = '84px'; input.style.marginLeft = '8px';
             input.dataset.key = k;
-            pricesTable.appendChild(label);
-            pricesTable.appendChild(input);
+            row.appendChild(label);
+            row.appendChild(input);
+            pricesTable.appendChild(row);
 
             const opt = document.createElement('option'); opt.value = k; opt.textContent = k; startType.appendChild(opt);
           }
@@ -186,11 +212,129 @@
           if(keys.length > 0) startType.value = keys[keys.length - 1];
         }
 
+        // Read displayed prices and convert to chaos-per-essence for internal use.
         function readPrices(){
           const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
           const prices = {};
-          inputs.forEach(i=> prices[i.dataset.key] = Number(i.value));
+          const unit = getPriceUnit();
+          const chaosPerDivLocal = Number(document.getElementById('chaosPerDiv').value) || fetchedChaosPerDiv || 0;
+          inputs.forEach(i=>{
+            const raw = Number(i.value) || 0;
+            if(unit === 'chaos'){
+              prices[i.dataset.key] = raw;
+            } else {
+              // user entered 'essences per div' -> convert to chaos per essence
+              if(raw > 0 && chaosPerDivLocal > 0) prices[i.dataset.key] = chaosPerDivLocal / raw; else prices[i.dataset.key] = 0;
+            }
+          });
           return prices;
+        }
+
+        function getPriceUnit(){
+          try{
+            const sel = document.querySelector('input[name="priceUnit"]:checked');
+            return sel ? sel.value : 'chaos';
+          }catch(e){return 'chaos'}
+        }
+
+        // Persist user-entered values to localStorage so they survive page reloads.
+        function saveUserValues(){
+          try{
+            // Save the displayed values and the selected unit so user sees same inputs next time.
+            const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
+            const displayed = {};
+            inputs.forEach(i=> displayed[i.dataset.key] = i.value);
+            const obj = {
+              prices: displayed,
+              startCount: Number(document.getElementById('startCount').value) || 0,
+              startType: document.getElementById('startType').value || null,
+              bluePerDiv: document.getElementById('bluePerDiv').value || null,
+              chaosPerDiv: document.getElementById('chaosPerDiv').value || null,
+              league: (document.getElementById('leagueSelect') && document.getElementById('leagueSelect').value) ? document.getElementById('leagueSelect').value : null,
+              priceUnit: getPriceUnit(),
+            };
+            localStorage.setItem('poh_user_values', JSON.stringify(obj));
+          }catch(e){/* ignore */}
+        }
+
+        function loadUserValues(){
+          try{
+            const s = localStorage.getItem('poh_user_values');
+            if(!s) return null;
+            return JSON.parse(s);
+          }catch(e){return null}
+        }
+
+        function applyUserValues(obj){
+          try{
+            if(!obj) return;
+            // apply simple fields
+            if(obj.startCount != null) document.getElementById('startCount').value = obj.startCount;
+            if(obj.startType) document.getElementById('startType').value = obj.startType;
+            if(obj.bluePerDiv != null) document.getElementById('bluePerDiv').value = obj.bluePerDiv;
+            if(obj.chaosPerDiv != null) document.getElementById('chaosPerDiv').value = obj.chaosPerDiv;
+            if(obj.league && document.getElementById('leagueSelect')) document.getElementById('leagueSelect').value = obj.league;
+            // restore unit selection
+            try{
+              if(obj.priceUnit){
+                const sel = document.querySelectorAll('input[name="priceUnit"]');
+                sel.forEach(r => r.checked = (r.value === obj.priceUnit));
+              }
+            }catch(e){}
+            // apply prices
+            if(obj.prices && typeof obj.prices === 'object'){
+              const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
+              inputs.forEach(i=>{
+                const k = i.dataset.key;
+                if(k && obj.prices[k] != null) i.value = obj.prices[k];
+              });
+            }
+          }catch(e){/* ignore */}
+        }
+
+        function attachInputSaveHandlers(){
+          try{
+            // prices inputs
+            const priceInputs = Array.from(document.querySelectorAll('#pricesTable input'));
+            priceInputs.forEach(inp => inp.addEventListener('change', saveUserValues));
+
+            // price unit radios
+            const unitRadios = Array.from(document.querySelectorAll('input[name="priceUnit"]'));
+            unitRadios.forEach(r => r.addEventListener('change', (e)=>{
+              // convert displayed values between units when toggled
+              try{
+                const newUnit = e.target.value;
+                const prevUnit = (newUnit === 'chaos') ? 'essPerDiv' : 'chaos';
+                convertDisplayedPrices(prevUnit, newUnit);
+              }catch(err){}
+              saveUserValues();
+            }));
+
+            // other controls
+            const ids = ['startCount','startType','bluePerDiv','chaosPerDiv','leagueSelect'];
+            ids.forEach(id => {
+              const el = document.getElementById(id);
+              if(el) el.addEventListener('change', saveUserValues);
+            });
+          }catch(e){/* ignore */}
+        }
+
+        // Convert currently displayed price inputs to target unit. If targetUnit is 'chaos', convert displayed values from essPerDiv->chaos; if 'essPerDiv', convert chaos->essPerDiv.
+        function convertDisplayedPrices(fromUnit, targetUnit){
+          const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
+          const chaosPerDivLocal = Number(document.getElementById('chaosPerDiv').value) || fetchedChaosPerDiv || 0;
+          // if from equals target, nothing to do
+          if(fromUnit === targetUnit) return;
+          inputs.forEach(i=>{
+            const v = Number(i.value) || 0;
+            let out = v;
+            if(fromUnit === 'chaos' && targetUnit === 'essPerDiv'){
+              if(v > 0 && chaosPerDivLocal > 0) out = chaosPerDivLocal / v; else out = 0;
+            } else if(fromUnit === 'essPerDiv' && targetUnit === 'chaos'){
+              if(v > 0 && chaosPerDivLocal > 0) out = chaosPerDivLocal / v; else out = 0;
+            }
+            i.value = (Math.round(out * 100) / 100).toString();
+          });
         }
 
         // Compute threshold C via fixed-point: C = f(C) - cost where f(C) = avg(max(price_i, C))
@@ -290,9 +434,19 @@
         document.getElementById('computeBtn').addEventListener('click', computeStrategy);
         // initialize UI from embedded defaults
         initPrices();
+        // attach handlers that save user edits to localStorage
+        attachInputSaveHandlers();
 
-        // Try to fetch live essence prices from poe.ninja on first load
-        // and then periodically every 10 minutes while page is open.
+        // If the user previously saved values in localStorage, apply them and
+        // do NOT perform the automated API fetch. If no saved values are found,
+        // fetch prices from the APIs once on first load.
+
+        const saved = loadUserValues();
+        if(saved){
+          applyUserValues(saved);
+        } else {
+          try{ fetchPoeNinjaPrices(); }catch(e){}
+        }
 
         // debug helper: prints arbitrary payload (prices, currencyRates, etc.)
         function updateDebug(payload, source='fallback'){
@@ -316,9 +470,21 @@
           function updateUI(pr){
             // update inputs in the prices table if present
             const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
+            // set displayed input values according to current unit
+            const unit = getPriceUnit();
+            const chaosPerDivLocal = Number(document.getElementById('chaosPerDiv').value) || fetchedChaosPerDiv || 0;
             inputs.forEach(i=>{
               const k = i.dataset.key;
-              if(k && pr[k] != null) i.value = pr[k];
+              if(k && pr[k] != null){
+                const chaosVal = pr[k];
+                if(unit === 'chaos'){
+                  i.value = chaosVal;
+                } else {
+                  // convert chaos -> essPerDiv
+                  if(chaosVal > 0 && chaosPerDivLocal > 0) i.value = (chaosPerDivLocal / chaosVal).toFixed(2);
+                  else i.value = '';
+                }
+              }
             });
             // also update debug output
             try{ updateDebug(pr, 'proxy'); }catch(e){}
@@ -406,9 +572,8 @@
           }
         }
 
-        // initial fetch and periodic refresh every 10 minutes
-        try{ fetchPoeNinjaPrices(); }catch(e){}
-        setInterval(()=>{ try{ fetchPoeNinjaPrices(); }catch(e){} }, 10 * 60 * 1000);
+        // initial fetch removed for periodic refresh — periodic refresh disabled.
+        try{ /* periodic auto-refresh disabled; manual refresh remains */ }catch(e){}
         // logging helper and manual refresh handler
         function log(msg){
           try{ console.log('fetch:', msg); }catch(e){}
