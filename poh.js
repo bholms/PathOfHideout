@@ -6,7 +6,7 @@
   };
 
   const defaultFossilPrices = {
-    'Metallic Fossil': 12,'Frigid Fossil': 10,'Serrated Fossil': 8,'Fundamental Fossil': 2,'Prismatic Fossil': 6,'Pristine Fossil': 5,'Dense Fossil': 7,'Aberrant Fossil': 4,'Aetheric Fossil': 4,'Bound Fossil': 3,'Corroded Fossil': 6,'Bloodstained Fossil': 3,'Hollow Fossil': 2,'Faceted Fossil': 2,'Jagged Fossil': 3,'Gilded Fossil': 1,'Opulent Fossil': 2,'Lucent Fossil': 1,'Fractured Fossil': 2,'Tangled Fossil': 2
+    'Metallic Fossil': 12,'Frigid Fossil': 10,'Serrated Fossil': 8,'Fundamental Fossil': 2,'Prismatic Fossil': 6,'Pristine Fossil': 5,'Dense Fossil': 7,'Aberrant Fossil': 4,'Aetheric Fossil': 4,'Bound Fossil': 3,'Corroded Fossil': 6,'Bloodstained Fossil': 3,'Hollow Fossil': 2,'Faceted Fossil': 2,'Jagged Fossil': 3,'Gilded Fossil': 1,'Opulent Fossil': 2,'Lucent Fossil': 1,'Fractured Fossil': 2,'Tangled Fossil': 2, 'Deft Fossil': 18, 'Scorched Fossil': 1
   };
 
   const defaultFossilWeights = Object.assign({}, defaultFossilPrices);
