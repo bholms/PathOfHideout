@@ -80,6 +80,7 @@
 
       <nav class="tabs" role="tablist" aria-label="Flip tools">
         <button class="tab" role="tab" id="tab-essence" aria-controls="panel-essence" aria-selected="true">Essence Flip</button>
+        <button class="tab" role="tab" id="tab-fossil" aria-controls="panel-fossil" aria-selected="false">Fossil Flip</button>
       </nav>
 
       <main>
@@ -114,12 +115,43 @@
             <div id="results" style="margin-top:14px"></div>
           </section>
 
+          <section class="panel" id="panel-fossil" role="tabpanel" aria-labelledby="tab-fossil" hidden>
+            <h2>Fossil Flip</h2>
+            <p class="muted">Tool to compute an optimal stop-threshold for flipping fossils using Harvest (weighted swap) with a swap cost. See the <a href="docs/fossil-flip-math.md" target="_blank" style="color:var(--accent);text-decoration:underline">math</a> behind it.</p>
+
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
+              <label style="flex:1 1 160px">Start count<br><input id="f_startCount" type="number" min="1" value="1" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
+              <label style="flex:1 1 220px">Start type<br><select id="f_startType" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);color:inherit"></select></label>
+              <label style="flex:1 1 160px">Purple lifeforce per div <span class="hint" title="Number of purple lifeforce per 1 Divine Orb">ⓘ</span><br><input id="f_purplePerDiv" type="number" min="0.0001" step="0.001" value="6000" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
+              <label style="flex:1 1 160px">Chaos per div <span class="hint" title="Chaos value gained by selling one div"><span class="hint">ⓘ</span></span><br><input id="f_chaosPerDiv" type="number" min="0" step="0.1" value="400" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></label>
+            </div>
+
+            <details style="margin-top:12px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.02)">
+              <summary style="cursor:pointer">Fossil prices & weights — edit values</summary>
+              <div style="margin-top:8px;display:flex;gap:10px;align-items:center;color:var(--muted);font-size:13px">
+                <div style="font-weight:600">Unit:</div>
+                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="fossilPriceUnit" value="chaos" checked> chaos / fossil</label>
+                <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="fossilPriceUnit" value="fossPerDiv"> fossil / div</label>
+                <div style="margin-left:8px;color:var(--muted);font-size:12px">(choose how you want to enter prices)</div>
+              </div>
+              <div id="fossilsTable" style="margin-top:10px;display:flex;flex-direction:column;gap:6px;max-height:420px;overflow:auto;padding-right:8px"></div>
+            </details>
+
+            <div class="cta" style="margin-top:12px">
+              <button class="btn" id="computeFossilBtn">Compute Strategy</button>
+              <button class="btn" id="refreshFossilBtn" style="border-color: rgba(255,255,255,0.06);">Refresh prices</button>
+            </div>
+
+            <div id="fossilResults" style="margin-top:14px"></div>
+          </section>
+
         </div>
       </main>
     </div>
 
     <script>
       (function(){
+        // Tab switching is native here; all flip logic is delegated to `poh.js`.
         const tabs = Array.from(document.querySelectorAll('.tab'));
         const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
         function show(index, focus=true){
@@ -142,454 +174,8 @@
         let start = 0;
         try{ const saved = localStorage.getItem('pohtab'); if(saved!=null) start = Number(saved); }catch(e){}
         show(start,false);
-
-        // --- Fossil/Essence flip logic ---
-        // Default essence prices (Defeaning tier) in Standard League
-        const defaultPrices = {
-          'Scorn': 56,
-          'Rage': 42,
-          'Spite': 42,
-          'Woe': 37,
-          'Zeal': 30,
-          'Envy': 24,
-          'Sorrow': 23,
-          'Loathing': 21,
-          'Wrath': 21,
-          'Contempt': 20,
-          'Misery': 17,
-          'Torment': 17,
-          'Greed': 15,
-          'Anger': 14,
-          'Hatred': 14,
-          'Suffering': 5.0,
-          'Doubt': 4.0,
-          'Dread': 3.0,
-          'Fear': 1.0,
-        };
-
-        function initPrices(){
-          const pricesTable = document.getElementById('pricesTable');
-          const startType = document.getElementById('startType');
-          pricesTable.innerHTML = '';
-          startType.innerHTML = '';
-          // ensure unit radio exists and set default if not saved
-          try{
-            const wrap = document.getElementById('priceUnitWrap');
-            if(wrap){
-              const radios = Array.from(wrap.querySelectorAll('input[name="priceUnit"]'));
-              // restore saved unit if present
-              const saved = loadUserValues();
-              if(saved && saved.priceUnit){
-                radios.forEach(r => r.checked = (r.value === saved.priceUnit));
-              }
-            }
-          }catch(e){}
-          const keys = Object.keys(defaultPrices);
-          for(const k of keys){
-            const row = document.createElement('div');
-            row.style.display = 'flex';
-            row.style.justifyContent = 'flex-start';
-            row.style.alignItems = 'center';
-            row.style.gap = '8px';
-            const label = document.createElement('label');
-            label.textContent = k;
-            label.style.flex = '0 0 220px';
-            label.style.margin = '0';
-            label.style.overflow = 'hidden';
-            label.style.textOverflow = 'ellipsis';
-            label.style.whiteSpace = 'nowrap';
-            const input = document.createElement('input');
-            input.type = 'number'; input.step = '0.1'; input.value = defaultPrices[k];
-            input.style.padding = '8px'; input.style.borderRadius = '8px'; input.style.border = '1px solid rgba(255,255,255,0.04)'; input.style.background = 'transparent'; input.style.color = 'inherit'; input.style.width = '84px'; input.style.marginLeft = '8px';
-            input.dataset.key = k;
-            row.appendChild(label);
-            row.appendChild(input);
-            pricesTable.appendChild(row);
-
-            const opt = document.createElement('option'); opt.value = k; opt.textContent = k; startType.appendChild(opt);
-          }
-          // default to the last option in the list
-          if(keys.length > 0) startType.value = keys[keys.length - 1];
-        }
-
-        // Read displayed prices and convert to chaos-per-essence for internal use.
-        function readPrices(){
-          const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
-          const prices = {};
-          const unit = getPriceUnit();
-          const chaosPerDivLocal = Number(document.getElementById('chaosPerDiv').value) || fetchedChaosPerDiv || 0;
-          inputs.forEach(i=>{
-            const raw = Number(i.value) || 0;
-            if(unit === 'chaos'){
-              prices[i.dataset.key] = raw;
-            } else {
-              // user entered 'essences per div' -> convert to chaos per essence
-              if(raw > 0 && chaosPerDivLocal > 0) prices[i.dataset.key] = chaosPerDivLocal / raw; else prices[i.dataset.key] = 0;
-            }
-          });
-          return prices;
-        }
-
-        function getPriceUnit(){
-          try{
-            const sel = document.querySelector('input[name="priceUnit"]:checked');
-            return sel ? sel.value : 'chaos';
-          }catch(e){return 'chaos'}
-        }
-
-        // Persist user-entered values to localStorage so they survive page reloads.
-        function saveUserValues(){
-          try{
-            // Save the displayed values and the selected unit so user sees same inputs next time.
-            const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
-            const displayed = {};
-            inputs.forEach(i=> displayed[i.dataset.key] = i.value);
-            const obj = {
-              prices: displayed,
-              startCount: Number(document.getElementById('startCount').value) || 0,
-              startType: document.getElementById('startType').value || null,
-              bluePerDiv: document.getElementById('bluePerDiv').value || null,
-              chaosPerDiv: document.getElementById('chaosPerDiv').value || null,
-              league: (document.getElementById('leagueSelect') && document.getElementById('leagueSelect').value) ? document.getElementById('leagueSelect').value : null,
-              priceUnit: getPriceUnit(),
-            };
-            localStorage.setItem('poh_user_values', JSON.stringify(obj));
-          }catch(e){/* ignore */}
-        }
-
-        function loadUserValues(){
-          try{
-            const s = localStorage.getItem('poh_user_values');
-            if(!s) return null;
-            return JSON.parse(s);
-          }catch(e){return null}
-        }
-
-        function applyUserValues(obj){
-          try{
-            if(!obj) return;
-            // apply simple fields
-            if(obj.startCount != null) document.getElementById('startCount').value = obj.startCount;
-            if(obj.startType) document.getElementById('startType').value = obj.startType;
-            if(obj.bluePerDiv != null) document.getElementById('bluePerDiv').value = obj.bluePerDiv;
-            if(obj.chaosPerDiv != null) document.getElementById('chaosPerDiv').value = obj.chaosPerDiv;
-            if(obj.league && document.getElementById('leagueSelect')) document.getElementById('leagueSelect').value = obj.league;
-            // restore unit selection
-            try{
-              if(obj.priceUnit){
-                const sel = document.querySelectorAll('input[name="priceUnit"]');
-                sel.forEach(r => r.checked = (r.value === obj.priceUnit));
-              }
-            }catch(e){}
-            // apply prices
-            if(obj.prices && typeof obj.prices === 'object'){
-              const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
-              inputs.forEach(i=>{
-                const k = i.dataset.key;
-                if(k && obj.prices[k] != null) i.value = obj.prices[k];
-              });
-            }
-          }catch(e){/* ignore */}
-        }
-
-        function attachInputSaveHandlers(){
-          try{
-            // prices inputs
-            const priceInputs = Array.from(document.querySelectorAll('#pricesTable input'));
-            priceInputs.forEach(inp => inp.addEventListener('change', saveUserValues));
-
-            // price unit radios
-            const unitRadios = Array.from(document.querySelectorAll('input[name="priceUnit"]'));
-            unitRadios.forEach(r => r.addEventListener('change', (e)=>{
-              // convert displayed values between units when toggled
-              try{
-                const newUnit = e.target.value;
-                const prevUnit = (newUnit === 'chaos') ? 'essPerDiv' : 'chaos';
-                convertDisplayedPrices(prevUnit, newUnit);
-              }catch(err){}
-              saveUserValues();
-            }));
-
-            // other controls
-            const ids = ['startCount','startType','bluePerDiv','chaosPerDiv','leagueSelect'];
-            ids.forEach(id => {
-              const el = document.getElementById(id);
-              if(el) el.addEventListener('change', saveUserValues);
-            });
-          }catch(e){/* ignore */}
-        }
-
-        // Convert currently displayed price inputs to target unit. If targetUnit is 'chaos', convert displayed values from essPerDiv->chaos; if 'essPerDiv', convert chaos->essPerDiv.
-        function convertDisplayedPrices(fromUnit, targetUnit){
-          const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
-          const chaosPerDivLocal = Number(document.getElementById('chaosPerDiv').value) || fetchedChaosPerDiv || 0;
-          // if from equals target, nothing to do
-          if(fromUnit === targetUnit) return;
-          inputs.forEach(i=>{
-            const v = Number(i.value) || 0;
-            let out = v;
-            if(fromUnit === 'chaos' && targetUnit === 'essPerDiv'){
-              if(v > 0 && chaosPerDivLocal > 0) out = chaosPerDivLocal / v; else out = 0;
-            } else if(fromUnit === 'essPerDiv' && targetUnit === 'chaos'){
-              if(v > 0 && chaosPerDivLocal > 0) out = chaosPerDivLocal / v; else out = 0;
-            }
-            i.value = (Math.round(out * 100) / 100).toString();
-          });
-        }
-
-        // Compute threshold C via fixed-point: C = f(C) - cost where f(C) = avg(max(price_i, C))
-        function computeThreshold(pricesArr, cost){
-          const N = pricesArr.length;
-          const minP = Math.min(...pricesArr);
-          const maxP = Math.max(...pricesArr);
-          let low = minP - cost - 10; // safe lower bound
-          let high = maxP + 10;
-          for(let iter=0; iter<80; iter++){
-            const mid = (low+high)/2;
-            const f = pricesArr.reduce((s,p)=> s + Math.max(p, mid), 0) / N;
-            const lhs = f - cost; // avg_V - cost
-            if(lhs > mid) low = mid; else high = mid;
-          }
-          const C = (low+high)/2;
-          return C;
-        }
-
-        function computeStrategy(){
-          const pricesObj = readPrices();
-          const types = Object.keys(pricesObj);
-          const pricesArr = types.map(t=> pricesObj[t]);
-          // compute craft cost per flip
-          // prefer using fetched chaos per lifeforce (if available): cost = 30 * chaosPerLifeforce
-          const bluePerDiv = Number(document.getElementById('bluePerDiv').value) || 0; // blue lifeforce per 1 divine
-          const chaosPerDiv = Number(document.getElementById('chaosPerDiv').value) || 0; // chaos per divine
-          let cost = 0;
-          // Prefer user-entered textbox values when available
-          if(chaosPerDiv > 0 && bluePerDiv > 0){
-            const chaosPerBlueDerived = chaosPerDiv / bluePerDiv;
-            cost = 30 * chaosPerBlueDerived;
-          } else if(fetchedChaosPerLifeforce != null && typeof fetchedChaosPerLifeforce === 'number'){
-            // fall back to fetched chaos per blue lifeforce
-            cost = 30 * fetchedChaosPerLifeforce;
-          } else {
-            cost = 0;
-          }
-          const C = computeThreshold(pricesArr, cost);
-          const V = {};
-          types.forEach((t,i)=> V[t] = Math.max(pricesArr[i], C));
-          const start = document.getElementById('startType').value;
-          const count = Math.max(1, Math.floor(Number(document.getElementById('startCount').value) || 1));
-          const expectedPer = V[start];
-          const totalExpected = expectedPer * count;
-          const immediate = pricesObj[start] * count;
-          const profit = totalExpected - immediate;
-
-          // Which types to stop at
-          const stopTypes = types.filter(t=> pricesObj[t] >= C);
-
-          // Expected flips / craft cost (cost is per-flip per-essence)
-          const q = stopTypes.length / types.length; // probability a random swap yields a stop-type
-          let expectedFlipsPerEssence = 0;
-          if(pricesObj[start] >= C) expectedFlipsPerEssence = 0; else expectedFlipsPerEssence = q > 0 ? (1 / q) : 0;
-          const totalExpectedCraftCost = count * expectedFlipsPerEssence * cost;
-
-          const res = document.getElementById('results');
-          res.innerHTML = '';
-          const summary = document.createElement('div');
-          function fmtChaosDiv(v){
-            if(chaosPerDiv > 0) return `${v.toFixed(3)} chaos / ${(v/chaosPerDiv).toFixed(3)} div`;
-            return `${v.toFixed(3)} chaos / — div`;
-          }
-          summary.innerHTML = `<strong>Threshold (C):</strong> ${fmtChaosDiv(C)} — <strong>Stop types:</strong> ${stopTypes.join(', ')}`;
-          res.appendChild(summary);
-
-          const table = document.createElement('table');
-          table.className = 'results-table';
-          table.style.marginTop = '10px';
-          // ensure columns are evenly spaced via CSS colgroup
-          const cg = document.createElement('colgroup');
-          for(let i=0;i<4;i++){ const c = document.createElement('col'); cg.appendChild(c); }
-          table.appendChild(cg);
-          const hdr = document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:left">Price (c)</th><th style="text-align:left">Optimal Value (c)</th><th style="text-align:left">Optimal Action</th>';
-          table.appendChild(hdr);
-          // display types sorted by price (high -> low)
-          const sortedTypes = types.slice().sort((a,b) => (pricesObj[b] || 0) - (pricesObj[a] || 0));
-          sortedTypes.forEach(t=>{
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</td><td style="text-align:left;overflow:hidden">${pricesObj[t].toFixed(2)}</td><td style="text-align:left;overflow:hidden">${V[t].toFixed(3)}</td><td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pricesObj[t] >= C ? 'Keep / Stop' : 'Flip'}</td>`;
-            table.appendChild(tr);
-          });
-          res.appendChild(table);
-
-          const footer = document.createElement('div'); footer.style.marginTop='10px';
-          footer.innerHTML = `<div><strong>Start:</strong> ${count} × ${start} (price ${fmtChaosDiv(pricesObj[start])})</div>
-                              <div><strong>Craft per flip (computed):</strong> ${fmtChaosDiv(cost)}</div>
-                              <div><strong>Expected final per essence:</strong> ${fmtChaosDiv(expectedPer)}</div>
-                              <div><strong>Expected flips per essence:</strong> ${expectedFlipsPerEssence.toFixed(3)}</div>
-                              <div><strong>Expected craft cost:</strong> ${fmtChaosDiv(totalExpectedCraftCost)}</div>
-                              <div><strong>Expected total value:</strong> ${fmtChaosDiv(totalExpected)}</div>
-                              <div style="color:${profit>=0? 'var(--accent)': '#f87171'}"><strong>Expected profit vs immediate sell:</strong> ${fmtChaosDiv(profit)}</div>`;
-          res.appendChild(footer);
-        }
-
-        document.getElementById('computeBtn').addEventListener('click', computeStrategy);
-        // initialize UI from embedded defaults
-        initPrices();
-        // attach handlers that save user edits to localStorage
-        attachInputSaveHandlers();
-
-        // If the user previously saved values in localStorage, apply them and
-        // do NOT perform the automated API fetch. If no saved values are found,
-        // fetch prices from the APIs once on first load.
-
-        const saved = loadUserValues();
-        if(saved){
-          applyUserValues(saved);
-        } else {
-          try{ fetchPoeNinjaPrices(); }catch(e){}
-        }
-
-        // debug helper: prints arbitrary payload (prices, currencyRates, etc.)
-        function updateDebug(payload, source='fallback'){
-          try{
-            const out = { timestamp: new Date().toISOString(), source, data: payload };
-            const el = document.getElementById('fetchDebug');
-            if(el) el.textContent = JSON.stringify(out, null, 2);
-          }catch(e){/* ignore */}
-        }
-
-        // fetched currency rates (chaos per lifeforce, chaos per div)
-        let fetchedChaosPerLifeforce = null;
-        let fetchedChaosPerDiv = null;
-
-        async function fetchPoeNinjaPrices(){
-          // use the Cloudflare Worker proxy to avoid CORS issues
-          const url = 'https://jolly-dew-18cc.jw11011.workers.dev/';
-          // clone defaults as fallback
-          const prices = Object.assign({}, defaultPrices);
-
-          function updateUI(pr){
-            // update inputs in the prices table if present
-            const inputs = Array.from(document.querySelectorAll('#pricesTable input'));
-            // set displayed input values according to current unit
-            const unit = getPriceUnit();
-            const chaosPerDivLocal = Number(document.getElementById('chaosPerDiv').value) || fetchedChaosPerDiv || 0;
-            inputs.forEach(i=>{
-              const k = i.dataset.key;
-              if(k && pr[k] != null){
-                const chaosVal = pr[k];
-                if(unit === 'chaos'){
-                  i.value = chaosVal;
-                } else {
-                  // convert chaos -> essPerDiv
-                  if(chaosVal > 0 && chaosPerDivLocal > 0) i.value = (chaosPerDivLocal / chaosVal).toFixed(2);
-                  else i.value = '';
-                }
-              }
-            });
-            // also update debug output
-            try{ updateDebug(pr, 'proxy'); }catch(e){}
-            try{ log('Prices updated in UI'); }catch(e){}
-          }
-
-          try{
-            try{ log('Requesting prices from proxy...'); }catch(e){}
-            // include selected league as query parameter so the proxy/worker can forward appropriately
-            const leagueSel = (document.getElementById('leagueSelect') && document.getElementById('leagueSelect').value) ? document.getElementById('leagueSelect').value : 'Standard';
-            const fetchUrl = url + '?league=' + encodeURIComponent(leagueSel);
-            const res = await fetch(fetchUrl, {mode: 'cors'});
-            if(!res.ok) throw new Error('Fetch failed');
-            const data = await res.json();
-
-            if(data && Array.isArray(data.lines)){
-              const prefix = 'Deafening Essence of ';
-              data.lines.forEach(item => {
-                const name = item.name || item.baseType || '';
-                if(typeof name === 'string' && name.startsWith(prefix)){
-                  const key = name.substring(prefix.length).trim();
-                  const chaos = item.chaosValue;
-                  if(key && prices[key] != null && typeof chaos === 'number') prices[key] = chaos;
-                }
-              });
-            }
-
-            // also fetch currency rates (lifeforce/div) from wandering-lake proxy
-            try{
-              const leagueSel = (document.getElementById('leagueSelect') && document.getElementById('leagueSelect').value) ? document.getElementById('leagueSelect').value : 'Standard';
-              const curUrl = 'https://wandering-lake-d156.jw11011.workers.dev/?league=' + encodeURIComponent(leagueSel);
-              try{ log('Requesting currency rates from proxy...'); }catch(e){}
-              const cres = await fetch(curUrl, {mode: 'cors'});
-              if(cres && cres.ok){
-                const cdata = await cres.json();
-                const arr = Array.isArray(cdata) ? cdata : (Array.isArray(cdata.lines) ? cdata.lines : null);
-                if(arr){
-                  // find lifeforce and divine entries
-                  for(const it of arr){
-                    const id = (it.detailsId || '').toLowerCase();
-                    const name = (it.currencyTypeName || '').toLowerCase();
-                    if(id.includes('primal-crystallised-lifeforce') || name.includes('Primal Crystallised Lifeforce')){
-                      // chaosEquivalent holds chaos per lifeforce
-                      if(typeof it.chaosEquivalent === 'number'){
-                        fetchedChaosPerLifeforce = it.chaosEquivalent;
-                        // if we already have chaos per div, populate blue lifeforce per div = chaosPerDiv / chaosPerLifeforce
-                        try{
-                          if(fetchedChaosPerDiv != null && fetchedChaosPerLifeforce > 0){
-                            const bluePerDivVal = fetchedChaosPerDiv / fetchedChaosPerLifeforce;
-                            document.getElementById('bluePerDiv').value = bluePerDivVal.toFixed(3);
-                          }
-                        }catch(e){}
-                      }
-                    }
-                    if(id.includes('divine-orb') || name.includes('divine orb')){
-                      if(typeof it.chaosEquivalent === 'number'){
-                        fetchedChaosPerDiv = it.chaosEquivalent;
-                        document.getElementById('chaosPerDiv').value = fetchedChaosPerDiv.toFixed(2);
-                        // if we already have chaos per lifeforce, populate bluePerDiv
-                        try{
-                          if(fetchedChaosPerDiv != null && fetchedChaosPerLifeforce > 0){
-                            const bluePerDivVal = fetchedChaosPerDiv / fetchedChaosPerLifeforce;
-                            document.getElementById('bluePerDiv').value = bluePerDivVal.toFixed(3);
-                          }
-                        }catch(e){}
-                      }
-                    }
-                  }
-                }
-              }
-            }catch(e){
-              try{ log('Currency rates fetch failed: ' + (e && e.message? e.message : e)); }catch(e){}
-            }
-
-            // update UI with found prices
-            updateUI(prices);
-            try{ log('Prices fetched successfully from proxy'); }catch(e){}
-            return prices;
-          }catch(err){
-            // on any error, leave defaults in place and update UI
-            updateUI(prices);
-            try{ updateDebug(prices, 'fallback'); }catch(e){}
-            try{ log('Fetch failed, using fallback defaults: ' + (err && err.message ? err.message : err)); }catch(e){}
-            return prices;
-          }
-        }
-
-        // initial fetch removed for periodic refresh — periodic refresh disabled.
-        try{ /* periodic auto-refresh disabled; manual refresh remains */ }catch(e){}
-        // logging helper and manual refresh handler
-        function log(msg){
-          try{ console.log('fetch:', msg); }catch(e){}
-        }
-
-        // wire manual refresh button
-        try{
-          const rb = document.getElementById('refreshPricesBtn');
-          if(rb) rb.addEventListener('click', ()=>{ log('Manual refresh triggered'); fetchPoeNinjaPrices(); });
-        }catch(e){}
-        // wire league selector to refresh prices when changed
-        try{
-          const ls = document.getElementById('leagueSelect');
-          if(ls) ls.addEventListener('change', (ev)=>{ log('League changed to ' + ls.value); fetchPoeNinjaPrices(); });
-        }catch(e){}
       })();
     </script>
+    <script src="poh.js"></script>
   </body>
 </html>
