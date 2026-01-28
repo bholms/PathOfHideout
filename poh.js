@@ -2,7 +2,7 @@
 (function(){
   // Defaults
   const defaultPrices = {
-    'Scorn': 56,'Rage': 42,'Spite': 42,'Woe': 37,'Zeal': 30,'Envy': 24,'Sorrow': 23,'Loathing': 21,'Wrath': 21,'Contempt': 20,'Misery': 17,'Torment': 17,'Greed': 15,'Anger': 14,'Hatred': 14,'Suffering': 5.0,'Doubt': 4.0,'Dread': 3.0,'Fear': 1.0
+    'Scorn': 56,'Rage': 42,'Spite': 42,'Woe': 37,'Zeal': 30,'Envy': 24,'Sorrow': 23,'Loathing': 21,'Wrath': 21,'Contempt': 20,'Misery': 17,'Torment': 17,'Greed': 15,'Anger': 14,'Hatred': 14,'Suffering': 5.0,'Doubt': 4.0,'Dread': 3.0,'Fear': 1.0,'Anguish':1.0
   };
 
   const defaultFossilPrices = {
