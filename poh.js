@@ -106,20 +106,133 @@
 
   // compute and render essence strategy
   function computeStrategy(){
-    const pricesObj = readPrices(); const types = Object.keys(pricesObj); const pricesArr = types.map(t=> pricesObj[t]);
-    const bluePerDiv = Number(document.getElementById('bluePerDiv')?.value) || 0; const chaosPerDiv = Number(document.getElementById('chaosPerDiv')?.value) || 0; let cost = 0;
+    const pricesObj = readPrices(); 
+    const types = Object.keys(pricesObj); 
+    const pricesArr = types.map(t=> pricesObj[t]);
+    const bluePerDiv = Number(document.getElementById('bluePerDiv')?.value) || 0; 
+    const chaosPerDiv = Number(document.getElementById('chaosPerDiv')?.value) || 0; let cost = 0;
     if(chaosPerDiv>0 && bluePerDiv>0){ cost = 30*(chaosPerDiv/bluePerDiv); } else if(fetchedChaosPerLifeforce!=null) cost = 30 * fetchedChaosPerLifeforce; else cost = 0;
-    const C = computeThreshold(pricesArr, cost); const V = {}; types.forEach((t,i)=> V[t] = Math.max(pricesArr[i], C));
-    const start = document.getElementById('startType')?.value; const count = Math.max(1, Math.floor(Number(document.getElementById('startCount')?.value)||1)); const expectedPer = V[start]; const totalExpected = expectedPer * count; const immediate = pricesObj[start]*count; const profit = totalExpected - immediate;
+    const C = computeThreshold(pricesArr, cost); 
+    const V = {}; types.forEach((t,i)=> V[t] = Math.max(pricesArr[i], C));
+    const start = document.getElementById('startType')?.value; 
+    const count = Math.max(1, Math.floor(Number(document.getElementById('startCount')?.value)||1)); 
+    const expectedPer = V[start]; 
+    const totalExpected = expectedPer * count; 
+    const immediate = pricesObj[start]*count; 
+    const profit = totalExpected - immediate;
     const stopTypes = types.filter(t=> pricesObj[t] >= C);
-    const q = stopTypes.length / types.length; let expectedFlipsPerEssence = 0; if(pricesObj[start] >= C) expectedFlipsPerEssence = 0; else expectedFlipsPerEssence = q>0? (1/q):0; const totalExpectedCraftCost = count * expectedFlipsPerEssence * cost;
+    const q = stopTypes.length / types.length; let expectedFlipsPerEssence = 0; if(pricesObj[start] >= C) expectedFlipsPerEssence = 0; else expectedFlipsPerEssence = q>0? (1/q):0; 
+    const totalExpectedCraftCost = count * expectedFlipsPerEssence * cost;
     const res = document.getElementById('results'); if(!res) return; res.innerHTML = '';
+    function fmtChaosDiv(v){ if(chaosPerDiv>0) return `${v.toFixed(3)} chaos / ${(v/chaosPerDiv).toFixed(3)} div`; return `${v.toFixed(3)} chaos / — div` }
+    const summary = document.createElement('div'); summary.innerHTML = `<strong>Threshold (C):</strong> ${fmtChaosDiv(C)} — <strong>Stop types:</strong> ${stopTypes.join(', ')}`; res.appendChild(summary);
+    const table = document.createElement('table'); table.className='results-table'; table.style.marginTop='10px'; const cg=document.createElement('colgroup'); 
+    for(let i=0;i<4;i++) cg.appendChild(document.createElement('col')); table.appendChild(cg); const hdr=document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:left">Price (c)</th><th style="text-align:left">Optimal Value (c)</th><th style="text-align:left">Optimal Action</th>'; table.appendChild(hdr);
+    const sorted = types.slice().sort((a,b)=> (pricesObj[b]||0) - (pricesObj[a]||0)); sorted.forEach(t=>{ const tr=document.createElement('tr'); tr.innerHTML = `<td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</td><td style="text-align:left;overflow:hidden">${pricesObj[t].toFixed(2)}</td><td style="text-align:left;overflow:hidden">${V[t].toFixed(3)}</td><td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pricesObj[t] >= C ? 'Keep / Stop' : 'Flip'}</td>`; table.appendChild(tr); }); res.appendChild(table);
+    const footer = document.createElement('div'); footer.style.marginTop='10px'; footer.innerHTML = `<div><strong>Start:</strong> ${count} × ${start} (price ${fmtChaosDiv(pricesObj[start])})</div><div><strong>Craft per flip (computed):</strong> ${fmtChaosDiv(cost)}</div><div><strong>Expected final per essence:</strong> ${fmtChaosDiv(expectedPer)}</div><div><strong>Expected flips per essence:</strong> ${expectedFlipsPerEssence.toFixed(3)}</div><div><strong>Expected craft cost:</strong> ${fmtChaosDiv(totalExpectedCraftCost)}</div><div><strong>Expected total value:</strong> ${fmtChaosDiv(totalExpected)}</div><div style="color:${profit>=0? 'var(--accent)': '#f87171'}"><strong>Expected profit after flipping vs immediate sell:</strong> ${fmtChaosDiv(profit)}</div>`;
+    res.appendChild(footer);
+  }
+
+  // ---------- High Essence UI (subset of essences) ----------
+  const highEssenceKeys = ['Insanity','Horror','Hysteria','Delirium'];
+
+  function initHighPrices(){
+    const pricesTable = document.getElementById('pricesTableHigh');
+    const startType = document.getElementById('startTypeHigh');
+    if(!pricesTable || !startType) return;
+    pricesTable.innerHTML = '';
+    startType.innerHTML = '';
+    for(const k of highEssenceKeys){
+      const row = document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px';
+      const label = document.createElement('label'); label.textContent = k; label.style.flex='0 0 220px'; label.style.margin='0'; label.style.overflow='hidden'; label.style.textOverflow='ellipsis'; label.style.whiteSpace='nowrap';
+      const input = document.createElement('input'); input.type='number'; input.step='0.1'; input.value = (defaultPrices[k] != null) ? defaultPrices[k] : 0; input.style.width='84px'; input.dataset.key = k;
+      row.appendChild(label); row.appendChild(input); pricesTable.appendChild(row);
+      const opt = document.createElement('option'); opt.value = k; opt.textContent = k; startType.appendChild(opt);
+    }
+    if(highEssenceKeys.length>0) startType.value = highEssenceKeys[0];
+  }
+
+  function getPriceUnitHigh(){ try{ const sel = document.querySelector('input[name="priceUnitHigh"]:checked'); return sel? sel.value: 'chaos'; }catch(e){return 'chaos'} }
+
+  function readHighPrices(){
+    const inputs = Array.from(document.querySelectorAll('#pricesTableHigh input'));
+    const prices = {};
+    const unit = getPriceUnitHigh();
+    const chaosPerDivLocal = Number(document.getElementById('chaosPerDivHigh')?.value) || fetchedChaosPerDiv || 0;
+    inputs.forEach(i=>{
+      const raw = Number(i.value) || 0;
+      if(unit === 'chaos') prices[i.dataset.key] = raw; else prices[i.dataset.key] = (raw>0 && chaosPerDivLocal>0)? (chaosPerDivLocal/raw):0;
+    });
+    return prices;
+  }
+
+  function saveHighUserValues(){ try{
+    const inputs = Array.from(document.querySelectorAll('#pricesTableHigh input'));
+    const displayed = {}; inputs.forEach(i=> displayed[i.dataset.key] = i.value);
+    const obj = { prices: displayed, startCount: Number(document.getElementById('startCountHigh')?.value)||0, startType: document.getElementById('startTypeHigh')?.value||null, bluePerDiv: document.getElementById('bluePerDivHigh')?.value||null, chaosPerDiv: document.getElementById('chaosPerDivHigh')?.value||null, league: document.getElementById('leagueSelect')?.value||null, priceUnit: getPriceUnitHigh() };
+    saveJSON('poh_high_user_values', obj);
+  }catch(e){} }
+
+  function loadHighUserValues(){ return loadJSON('poh_high_user_values'); }
+  function applyHighUserValues(obj){ try{ if(!obj) return; if(obj.startCount!=null) document.getElementById('startCountHigh').value = obj.startCount; if(obj.startType) document.getElementById('startTypeHigh').value = obj.startType; if(obj.bluePerDiv!=null) document.getElementById('bluePerDivHigh').value = obj.bluePerDiv; if(obj.chaosPerDiv!=null) document.getElementById('chaosPerDivHigh').value = obj.chaosPerDiv; if(obj.league && document.getElementById('leagueSelect')) document.getElementById('leagueSelect').value = obj.league; if(obj.priceUnit){ const sel = document.querySelectorAll('input[name="priceUnitHigh"]'); sel.forEach(r=> r.checked = (r.value === obj.priceUnit)); } if(obj.prices){ const inputs = Array.from(document.querySelectorAll('#pricesTableHigh input')); inputs.forEach(i=>{ const k=i.dataset.key; if(k && obj.prices[k]!=null) i.value = obj.prices[k]; }); } }catch(e){} }
+
+  function attachHighInputSaveHandlers(){
+    try{
+      const priceInputs = Array.from(document.querySelectorAll('#pricesTableHigh input'));
+      priceInputs.forEach(inp => inp.addEventListener('change', saveHighUserValues));
+      const unitRadios = Array.from(document.querySelectorAll('input[name="priceUnitHigh"]'));
+      unitRadios.forEach(r => r.addEventListener('change', (e)=>{ try{ const newUnit = e.target.value; const prevUnit = (newUnit==='chaos')? 'essPerDiv' : 'chaos'; const inputs = Array.from(document.querySelectorAll('#pricesTableHigh input')); const chaosPerDivLocal = Number(document.getElementById('chaosPerDivHigh')?.value) || fetchedChaosPerDiv || 0; if(prevUnit !== newUnit){ inputs.forEach(i=>{ const v = Number(i.value) || 0; let out = v; if(prevUnit==='chaos' && newUnit==='essPerDiv'){ if(v>0 && chaosPerDivLocal>0) out = chaosPerDivLocal / v; else out = 0; } else if(prevUnit==='essPerDiv' && newUnit==='chaos'){ if(v>0 && chaosPerDivLocal>0) out = chaosPerDivLocal / v; else out = 0; } i.value = (Math.round(out*100)/100).toString(); }); } }catch(err){} saveHighUserValues(); }));
+      ['startCountHigh','startTypeHigh','bluePerDivHigh','chaosPerDivHigh'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('change', saveHighUserValues); });
+    }catch(e){}
+  }
+
+  function computeHighStrategy(){
+    const pricesObj = readHighPrices();
+    const types = Object.keys(pricesObj);
+    const pricesArr = types.map(t=> pricesObj[t]);
+    const bluePerDiv = Number(document.getElementById('bluePerDivHigh')?.value) || 0;
+    const chaosPerDiv = Number(document.getElementById('chaosPerDivHigh')?.value) || 0; let cost = 0;
+    if(chaosPerDiv>0 && bluePerDiv>0){ cost = 30*(chaosPerDiv/bluePerDiv); } else if(fetchedChaosPerLifeforce!=null) cost = 30 * fetchedChaosPerLifeforce; else cost = 0;
+    const C = computeThreshold(pricesArr, cost);
+    const V = {}; types.forEach((t,i)=> V[t] = Math.max(pricesArr[i], C));
+    const start = document.getElementById('startTypeHigh')?.value;
+    const count = Math.max(1, Math.floor(Number(document.getElementById('startCountHigh')?.value)||1));
+    const expectedPer = V[start];
+    const totalExpected = expectedPer * count;
+    const immediate = pricesObj[start]*count;
+    const profit = totalExpected - immediate;
+    const stopTypes = types.filter(t=> pricesObj[t] >= C);
+    const q = stopTypes.length / types.length; let expectedFlipsPerEssence = 0; if(pricesObj[start] >= C) expectedFlipsPerEssence = 0; else expectedFlipsPerEssence = q>0? (1/q):0;
+    const totalExpectedCraftCost = count * expectedFlipsPerEssence * cost;
+    const res = document.getElementById('resultsHigh'); if(!res) return; res.innerHTML = '';
     function fmtChaosDiv(v){ if(chaosPerDiv>0) return `${v.toFixed(3)} chaos / ${(v/chaosPerDiv).toFixed(3)} div`; return `${v.toFixed(3)} chaos / — div` }
     const summary = document.createElement('div'); summary.innerHTML = `<strong>Threshold (C):</strong> ${fmtChaosDiv(C)} — <strong>Stop types:</strong> ${stopTypes.join(', ')}`; res.appendChild(summary);
     const table = document.createElement('table'); table.className='results-table'; table.style.marginTop='10px'; const cg=document.createElement('colgroup'); for(let i=0;i<4;i++) cg.appendChild(document.createElement('col')); table.appendChild(cg); const hdr=document.createElement('tr'); hdr.innerHTML = '<th style="text-align:left">Type</th><th style="text-align:left">Price (c)</th><th style="text-align:left">Optimal Value (c)</th><th style="text-align:left">Optimal Action</th>'; table.appendChild(hdr);
     const sorted = types.slice().sort((a,b)=> (pricesObj[b]||0) - (pricesObj[a]||0)); sorted.forEach(t=>{ const tr=document.createElement('tr'); tr.innerHTML = `<td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</td><td style="text-align:left;overflow:hidden">${pricesObj[t].toFixed(2)}</td><td style="text-align:left;overflow:hidden">${V[t].toFixed(3)}</td><td style="padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pricesObj[t] >= C ? 'Keep / Stop' : 'Flip'}</td>`; table.appendChild(tr); }); res.appendChild(table);
-    const footer = document.createElement('div'); footer.style.marginTop='10px'; footer.innerHTML = `<div><strong>Start:</strong> ${count} × ${start} (price ${fmtChaosDiv(pricesObj[start])})</div><div><strong>Craft per flip (computed):</strong> ${fmtChaosDiv(cost)}</div><div><strong>Expected final per essence:</strong> ${fmtChaosDiv(expectedPer)}</div><div><strong>Expected flips per essence:</strong> ${expectedFlipsPerEssence.toFixed(3)}</div><div><strong>Expected craft cost:</strong> ${fmtChaosDiv(totalExpectedCraftCost)}</div><div><strong>Expected total value:</strong> ${fmtChaosDiv(totalExpected)}</div><div style="color:${profit>=0? 'var(--accent)': '#f87171'}"><strong>Expected profit vs immediate sell:</strong> ${fmtChaosDiv(profit)}</div>`;
+    const footer = document.createElement('div'); footer.style.marginTop='10px'; footer.innerHTML = `<div><strong>Start:</strong> ${count} × ${start} (price ${fmtChaosDiv(pricesObj[start])})</div><div><strong>Craft per flip (computed):</strong> ${fmtChaosDiv(cost)}</div><div><strong>Expected final per essence:</strong> ${fmtChaosDiv(expectedPer)}</div><div><strong>Expected flips per essence:</strong> ${expectedFlipsPerEssence.toFixed(3)}</div><div><strong>Expected craft cost:</strong> ${fmtChaosDiv(totalExpectedCraftCost)}</div><div><strong>Expected total value:</strong> ${fmtChaosDiv(totalExpected)}</div><div style="color:${profit>=0? 'var(--accent)': '#f87171'}"><strong>Expected profit after flipping vs immediate sell:</strong> ${fmtChaosDiv(profit)}</div>`;
     res.appendChild(footer);
+  }
+
+  async function fetchPoeNinjaPricesHigh(){
+    const url = 'https://jolly-dew-18cc.jw11011.workers.dev/';
+    const prices = {};
+    highEssenceKeys.forEach(k=> prices[k] = (defaultPrices[k] != null) ? defaultPrices[k] : 0);
+    try{
+      const leagueSel = (document.getElementById('leagueSelect') && document.getElementById('leagueSelect').value) ? document.getElementById('leagueSelect').value : 'Standard';
+      const fetchUrl = url + '?league=' + encodeURIComponent(leagueSel);
+      const res = await fetch(fetchUrl, {mode: 'cors'});
+      if(!res.ok) throw new Error('Fetch failed');
+      const data = await res.json();
+      if(data && Array.isArray(data.lines)){
+        const prefix = 'Deafening Essence of ';
+        data.lines.forEach(item => { const name = item.name || item.baseType || ''; if(typeof name === 'string' && name.startsWith(prefix)){ const key = name.substring(prefix.length).trim(); const chaos = item.chaosValue; if(key && prices[key] != null && typeof chaos === 'number') prices[key] = chaos; } });
+      }
+      // update UI inputs
+      const inputs = Array.from(document.querySelectorAll('#pricesTableHigh input'));
+      const unit = getPriceUnitHigh(); const chaosPerDivLocal = Number(document.getElementById('chaosPerDivHigh')?.value) || fetchedChaosPerDiv || 0;
+      inputs.forEach(i=>{ const k = i.dataset.key; if(k && prices[k] != null){ const chaosVal = prices[k]; if(unit === 'chaos'){ i.value = chaosVal; } else { if(chaosVal > 0 && chaosPerDivLocal > 0) i.value = (chaosPerDivLocal / chaosVal).toFixed(2); else i.value = ''; } } });
+      return prices;
+    }catch(err){ try{ updateDebug(prices, 'high-fallback'); }catch(e){} return prices; }
   }
 
   // ---------- Fossil UI ----------
@@ -188,6 +301,14 @@
       const rb = document.getElementById('refreshPricesBtn'); if(rb) rb.addEventListener('click', ()=>{ fetchPoeNinjaPrices(); });
       initPrices(); attachInputSaveHandlers(); const saved = loadUserValues(); if(saved) applyUserValues(saved); else { try{ fetchPoeNinjaPrices(); }catch(e){} }
       const ls = document.getElementById('leagueSelect'); if(ls) ls.addEventListener('change', ()=> fetchPoeNinjaPrices());
+    }
+
+    // High Essence
+    if(document.getElementById('pricesTableHigh')){
+      const cbHigh = document.getElementById('computeBtnHigh'); if(cbHigh) cbHigh.addEventListener('click', computeHighStrategy);
+      const rbHigh = document.getElementById('refreshPricesBtnHigh'); if(rbHigh) rbHigh.addEventListener('click', ()=>{ fetchPoeNinjaPricesHigh(); });
+      initHighPrices(); attachHighInputSaveHandlers(); const savedH = loadHighUserValues(); if(savedH) applyHighUserValues(savedH); else { try{ fetchPoeNinjaPricesHigh(); }catch(e){} }
+      const lsH = document.getElementById('leagueSelect'); if(lsH) lsH.addEventListener('change', ()=> fetchPoeNinjaPricesHigh());
     }
 
     // Fossils
